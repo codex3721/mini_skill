@@ -1,0 +1,152 @@
+identity:
+  name: "mini_skill"
+  author: "jingor9394"
+  label:
+    en_US: "Mini_Skill"
+    zh_Hans: "Mini_Skill"
+    pt_BR: "Mini_Skill"
+    ja_JP: "Mini_Skill"
+description:
+  human:
+    en_US: "A smart, soulful, and more secure version of the mini skill, a growing 'personal/enterprise' assistant that gets smarter with each interaction.【Capable of skill invocation】"
+    zh_Hans: "聪明、有灵魂，更安全的 Dify 版 skill 管理，一个越来越懂你的'个人/企业'贴心助手。【具备skill调用能力】"
+    pt_BR: "SUm mini lagostim com alma, uma versão mais inteligente, mais segura e mais personalizada do mini lagostim.【Capacidade de invocação de habilidades】"
+    ja_JP: "魂のあるミニザリガニ、より賢く、より安全に、よりユーザーに合わせたバージョンのミニザリガニ。【能力：スキルの呼び出し】"
+  llm: "A smart, soulful, and more secure version of the mini skill, a growing 'personal/enterprise' assistant that gets smarter with each interaction.【Capable of skill invocation】"
+parameters:
+  - name: query
+    type: string
+    required: true
+    label:
+      en_US: Query string
+      zh_Hans: 查询语句
+      pt_BR: Query string
+      ja_JP: クエリ文字列
+    human_description:
+      en_US: "please input your question"
+      zh_Hans: "请输入你想问的问题"
+      pt_BR: "please input your question"
+      ja_JP: "クエリ文字列は、Skill_Agent に対して実行するタスクを指定する必要があります。"
+    llm_description: "please input your question"
+    form: llm
+
+  - name: files
+    type: files
+    required: false
+    label:
+      en_US: Files
+      zh_Hans: 上传文件
+      pt_BR: Files
+      ja_JP: ファイル
+    human_description:
+      en_US: "Upload file(s) for the agent to process."
+      zh_Hans: "上传文件，供 Agent 按技能说明书处理"
+      pt_BR: "Upload file(s) for the agent to process."
+      ja_JP: "エージェントが処理するファイルをアップロードします"
+    llm_description: "Upload file(s) for the agent to process."
+    form: llm
+
+  - name: model
+    type: model-selector
+    scope: llm
+    required: true
+    label:
+      en_US: Model
+      zh_Hans: 大模型
+      pt_BR: Model
+      ja_JP: モデル
+    human_description:
+      en_US: Select an LLM to run this tool.
+      zh_Hans: 选择用于运行本工具的大模型
+      pt_BR: Select an LLM to run this tool.
+      ja_JP: このツールを実行する LLM を選択します
+    llm_description: Select an LLM to run this tool.
+    form: form
+
+  - name: timeout_seconds
+    type: number
+    required: true
+    default: 120
+    label:
+      en_US: Timeout seconds
+      zh_Hans: 超时时间（秒）
+      pt_BR: Timeout seconds
+      ja_JP: タイムアウト（秒）
+    human_description:
+      en_US: Hard timeout for one tool invocation (includes tool loops).
+      zh_Hans: 单次调用的硬超时（包含多轮工具调用循环）
+      pt_BR: Hard timeout for one tool invocation (includes tool loops).
+      ja_JP: 1回の呼び出しのハードタイムアウト（ツールループ含む）
+    llm_description: Hard timeout for one tool invocation.
+    form: form
+
+  - name: compaction_max_prompt_tokens
+    type: number
+    required: true
+    default: 12000
+    label:
+      en_US: Compaction max prompt tokens
+      zh_Hans: 上下文预算（token 估算）
+      pt_BR: Compaction max prompt tokens
+      ja_JP: コンテキスト予算（推定トークン）
+    human_description:
+      en_US: When estimated prompt tokens exceed this, summarize older context.
+      zh_Hans: 当 prompt 的 token 估算值超过该阈值时，会压缩（总结）较早的上下文
+      pt_BR: When estimated prompt tokens exceed this, summarize older context.
+      ja_JP: 推定トークンがこの値を超えたら古い文脈を要約する
+    llm_description: Estimated prompt-token threshold for compaction.
+    form: form
+
+  - name: loop_detection
+    type: boolean
+    required: true
+    default: true
+    label:
+      en_US: Tool loop detection
+      zh_Hans: 循环检测
+      pt_BR: Tool loop detection
+      ja_JP: ループ検出
+    human_description:
+      en_US: Detect repetitive tool-call loops and stop early.
+      zh_Hans: 检测重复的工具调用循环并提前熔断，避免无意义重试
+      pt_BR: Detect repetitive tool-call loops and stop early.
+      ja_JP: ツール呼び出しの反復ループを検出して早期停止する
+    llm_description: Detect repetitive tool-call loops and stop early.
+    form: form
+
+  - name: exec_approval_enabled
+    type: boolean
+    required: true
+    default: true
+    label:
+      en_US: Execution approval
+      zh_Hans: 执行审批开关
+      pt_BR: Execution approval
+      ja_JP: 実行承認
+    human_description:
+      en_US: When disabled, commands run without interactive approval prompts.
+      zh_Hans: 关闭后，命令执行不再弹出“允许/拒绝”确认，直接放行。
+      pt_BR: When disabled, commands run without interactive approval prompts.
+      ja_JP: 無効にすると、コマンド実行で承認確認を求めません。
+    llm_description: Toggle whether command execution requires interactive approval.
+    form: form
+
+  - name: show_usage_text
+    type: boolean
+    required: true
+    default: false
+    label:
+      en_US: Show usage text
+      zh_Hans: 显示用量文本
+      pt_BR: Show usage text
+      ja_JP: 使用量テキスト表示
+    human_description:
+      en_US: When enabled, show token/cost usage summary in the chat output.
+      zh_Hans: 打开后，会在对话中输出 token/费用 用量统计文本。
+      pt_BR: When enabled, show token/cost usage summary in the chat output.
+      ja_JP: 有効にすると、トークン/費用の使用量サマリをチャットに表示します。
+    llm_description: Toggle whether to output token/cost usage text to the frontend.
+    form: form
+extra:
+  python:
+    source: tools/mini_skill.py
