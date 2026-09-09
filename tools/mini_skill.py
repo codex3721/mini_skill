@@ -616,6 +616,7 @@ class SkillAgentTool(Tool):
             session_dir=session_dir,
             memory_turns=memory_turns,
             skills_snapshot_cache_path=os.path.join(temp_root, "skills_snapshot.json"),
+            user_token=(tool_parameters.get("user_token") or "").strip()
         )
 
         skills_snapshot = runtime.load_skills_snapshot()

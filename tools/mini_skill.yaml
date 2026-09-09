@@ -30,6 +30,22 @@ parameters:
     llm_description: "please input your question"
     form: llm
 
+  - name: user_token
+    type: string
+    required: false
+    label:
+      en_US: User Token
+      zh_Hans: 用户 Token（系统变量）
+      pt_BR: Token do usuário
+      ja_JP: ユーザートークン
+    human_description:
+      en_US: "Please input system variable sys.token"
+      zh_Hans: "请输入系统变量sys.token"
+      pt_BR: "Insira a variável de sistema sys.token"
+      ja_JP: "システム変数 sys.token を入力してください"
+    llm_description: "Runtime user token from Dify system variable sys.token, injected into executed commands as env DIFY_USER_TOKEN. Do not fill or infer by yourself; leave it to the form."
+    form: form
+
   - name: files
     type: files
     required: false

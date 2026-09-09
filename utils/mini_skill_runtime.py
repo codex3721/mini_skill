@@ -404,10 +404,12 @@ class _AgentRuntime:
         session_dir: str,
         memory_turns: int,
         skills_snapshot_cache_path: str | None = None,
+        user_token: str | None = None,
     ) -> None:
         self.skills_root = skills_root
         self.session_dir = session_dir
         self.memory_turns = memory_turns
+        self.user_token = str(user_token or "").strip()
         self._skill_files_listed: set[str] = set()
         self._skills_snapshot_cache_path = skills_snapshot_cache_path
         self._skills_snapshot: dict[str, Any] | None = None
@@ -992,6 +994,7 @@ class _AgentRuntime:
             env["SKILL_AGENT_SKILL_ID"] = resolved
             env["SKILL_AGENT_SKILL_DIR"] = skill_path
             env["SKILL_AGENT_CWD"] = cwd
+            env["DIFY_USER_TOKEN"] = self.user_token
             if exe == "python":
                 prev = env.get("PYTHONPATH") or ""
                 extra = skill_path
@@ -1142,6 +1145,7 @@ class _AgentRuntime:
             env["SKILL_AGENT_SESSION_DIR"] = self.session_dir
             env["SKILL_AGENT_UPLOADS_DIR"] = os.path.join(self.session_dir, "uploads")
             env["SKILL_AGENT_CWD"] = cwd
+            env["DIFY_USER_TOKEN"] = self.user_token
             result = subprocess.run(
                 command,
                 cwd=cwd,
