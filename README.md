@@ -5,4 +5,4 @@
 - tools/mini_skill.py 619行，从工具输入中获取 user_token
 - tools/mini_skill.yaml 33行，新增 user_token 字段
 - utils/mini_skill_runtime.py 407行，runtime 注入 user_token
-- utils/mini_skill_runtime.py 997行，runtime env 注入 DIFY_USER_TOKEN
+- utils/mini_skill_runtime.py 997行，runtime env 注入 USER_TOKEN
