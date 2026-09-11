@@ -2363,7 +2363,6 @@ class SkillAgentTool(Tool):
                     or {"raw": final_text or ""}
                 )
                 _dbg(f"structured_output final_text_len={len(final_text or '')} extracted={_parsed is not None}")
-                yield self.create_variable_message("structured_output", _parsed)
                 yield self.create_json_message(_parsed)
 
             try:

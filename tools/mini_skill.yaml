@@ -197,12 +197,7 @@ parameters:
     llm_description: JSON schema for structured output. Only used when structured output is enabled.
     form: form
 
-output_schema:
-  type: object
-  properties:
-    structured_output:
-      type: object
-      description: "LLM 的结构化输出（解析后的 JSON 对象），开启「结构化输出」时可用。"
+output_schema: {}
 extra:
   python:
     source: tools/mini_skill.py
