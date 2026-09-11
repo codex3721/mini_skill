@@ -100,6 +100,7 @@ class SkillAgentTool(Tool):
 
         structured_output_enabled = bool(tool_parameters.get("structured_output_enabled"))
         structured_output_schema = (tool_parameters.get("structured_output_schema") or "").strip()
+        _dbg(f"structured_output_enabled={structured_output_enabled} schema_len={len(structured_output_schema)}")
 
         memory_turns = int(tool_parameters.get("memory_turns") or 12)
         system_prompt = tool_parameters.get("system_prompt") or "你是一个xxxx"
@@ -2356,6 +2357,8 @@ class SkillAgentTool(Tool):
                 yield self.create_text_message(usage.format_text(payload))
 
             if structured_output_enabled:
+                _dbg(f"structured_output final_text_len={len(final_text or '')} obj={structured_output_obj} extracted={_extract_json_object(final_text or '') is not None}")
+                yield self.create_text_message(f"\n[debug] structured_output: enabled={structured_output_enabled}, final_text_len={len(final_text or '')}, extracted={_extract_json_object(final_text or '') is not None}\n")
                 yield self.create_variable_message(
                     "structured_output",
                     structured_output_obj
