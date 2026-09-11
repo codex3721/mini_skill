@@ -202,18 +202,7 @@ output_schema:
   properties:
     structured_output:
       type: object
-      description:
-        en_US: "Structured output (parsed JSON object) from the LLM, available when 'Structured' is enabled."
-        zh_Hans: "LLM 的结构化输出（解析后的 JSON 对象），开启「结构化输出」时可用。"
-        pt_BR: "Saída estruturada (objeto JSON analisado) do LLM, disponível quando 'Estruturado' está ativado."
-        ja_JP: "LLMの構造化出力（解析済みJSONオブジェクト）。「構造化出力」有効時に利用可能。"
-    llm_usage:
-      type: object
-      description:
-        en_US: "LLM token/cost usage statistics."
-        zh_Hans: "LLM token/费用 用量统计。"
-        pt_BR: "Estatísticas de uso de token/custo do LLM."
-        ja_JP: "LLMトークン/コスト使用量統計。"
+      description: "LLM 的结构化输出（解析后的 JSON 对象），开启「结构化输出」时可用。"
 extra:
   python:
     source: tools/mini_skill.py
