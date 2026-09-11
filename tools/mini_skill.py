@@ -70,6 +70,16 @@ from dify_plugin.entities.tool import ToolInvokeMessage
 from utils.mini_skill_memory import _append_daily_dialogue, _dt_beijing, _reset_role
 
 
+def _extract_json_object(text: str) -> dict[str, Any] | None:
+    """从文本中提取 JSON 对象，兼容 markdown 代码块包裹；失败返回 None。"""
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (text or "").strip(), flags=re.IGNORECASE)
+    try:
+        obj = json.loads(cleaned)
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
 class SkillAgentTool(Tool):
     def _invoke(self, tool_parameters: dict[str, Any]) -> Generator[ToolInvokeMessage]:
         model = tool_parameters.get("model")
@@ -87,6 +97,9 @@ class SkillAgentTool(Tool):
             if tool_parameters.get("show_usage_text") is not None
             else False
         )
+
+        structured_output_enabled = bool(tool_parameters.get("structured_output_enabled"))
+        structured_output_schema = (tool_parameters.get("structured_output_schema") or "").strip()
 
         memory_turns = int(tool_parameters.get("memory_turns") or 12)
         system_prompt = tool_parameters.get("system_prompt") or "你是一个xxxx"
@@ -647,6 +660,19 @@ class SkillAgentTool(Tool):
             approval_context=str(approval_context or ""),
         )
 
+        # 结构化输出走 Dify 原生通道（模型支持时用 response_format=json_schema，
+        # 不支持时由服务端自动降级为提示注入），插件只需传 dict 形式的 schema。
+        structured_schema: dict[str, Any] | None = None
+        if structured_output_enabled:
+            try:
+                structured_schema = json.loads(structured_output_schema)
+                assert isinstance(structured_schema, dict)
+            except Exception:
+                yield self.create_text_message(
+                    "❌「结构化输出 schema」不是合法的 JSON 对象，请检查后重试。"
+                )
+                return
+
         messages: list[Any] = [SystemPromptMessage(content=system_content)]
 
         image_entries: list[dict[str, Any]] = []
@@ -1087,6 +1113,7 @@ class SkillAgentTool(Tool):
         empty_responses = 0
         saved_asset_fingerprints: set[str] = set()
         final_text_already_streamed = False
+        structured_output_obj: dict[str, Any] | None = None
         agent_tag_header = build_agent_tag_header(storage=storage, identity_key=identity_key, identity_md=identity_md)
 
         def invoke_llm_live(
@@ -1095,7 +1122,8 @@ class SkillAgentTool(Tool):
             tools: list[Any] | None,
             fallback_prompt_messages: list[Any] | None = None,
             alt_prompt_messages: list[Any] | None = None,
-        ) -> Generator[ToolInvokeMessage, None, tuple[str, list[Any], Any, int, bool]]:
+            structured_schema: dict[str, Any] | None = None,
+        ) -> Generator[ToolInvokeMessage, None, tuple[str, list[Any], Any, int, bool, dict[str, Any] | None]]:
             nontext_content: list[dict[str, Any]] = []
             tool_calls_all: list[Any] = []
             text_parts: list[str] = []
@@ -1125,7 +1153,7 @@ class SkillAgentTool(Tool):
                     return False
                 return True
 
-            def _invoke_once(pm: list[Any]) -> Generator[ToolInvokeMessage, None, tuple[str, list[Any], Any, int, bool]]:
+            def _invoke_once(pm: list[Any]) -> Generator[ToolInvokeMessage, None, tuple[str, list[Any], Any, int, bool, dict[str, Any] | None]]:
                 nonlocal nontext_content, tool_calls_all, text_parts, chunks_count, streamed_any, saw_tool_calls, emitted_prefix, emitted_len
                 nontext_content = []
                 tool_calls_all = []
@@ -1135,14 +1163,26 @@ class SkillAgentTool(Tool):
                 saw_tool_calls = False
                 emitted_prefix = False
                 emitted_len = 0
+                structured_obj: dict[str, Any] | None = None
 
                 try:
-                    response = self.session.model.llm.invoke(
-                        model_config=model,
-                        prompt_messages=pm,
-                        tools=tools,
-                        stream=True,
-                    )
+                    if structured_schema is not None:
+                        # Dify 原生结构化输出通道：模型支持则 response_format=json_schema 强制约束，
+                        # 不支持则服务端自动降级提示注入；服务端最终回填解析好的 structured_output。
+                        response = self.session.model.llm_structured_output.invoke(
+                            model_config=model,
+                            prompt_messages=pm,
+                            structured_output_schema=structured_schema,
+                            tools=tools,
+                            stream=True,
+                        )
+                    else:
+                        response = self.session.model.llm.invoke(
+                            model_config=model,
+                            prompt_messages=pm,
+                            tools=tools,
+                            stream=True,
+                        )
                 except TypeError:
                     response = self.session.model.llm.invoke(
                         model_config=model,
@@ -1162,14 +1202,29 @@ class SkillAgentTool(Tool):
                         tool_calls_all.extend(tool_calls)
                         if tool_calls:
                             saw_tool_calls = True
+                    _so = _safe_get(response, "structured_output")
+                    if isinstance(_so, dict):
+                        structured_obj = _so
                     if text:
                         text_parts.append(text)
                     combined_text = "".join(text_parts).strip()
                     if combined_text and not saw_tool_calls and should_emit_user_text(combined_text):
                         yield from emit_typing(combined_text)
-                    return combined_text, tool_calls_all, nontext_content, chunks_count, streamed_any
+                    return combined_text, tool_calls_all, nontext_content, chunks_count, streamed_any, structured_obj
 
-                for chunk in response:
+                def _tolerate_tail_parse_error(gen: Any) -> Any:
+                    # Dify 服务端在每轮流的末尾都会解析 structured_output；
+                    # Agent 中间的工具调用轮 content 为空，会抛
+                    # "Failed to parse structured output"。此时有效数据块已全部
+                    # 送达，忽略该尾部错误；最终轮由下方回退解析兜底。
+                    try:
+                        yield from gen
+                    except Exception as _e:
+                        if "structured output" in str(_e).lower() and (tool_calls_all or text_parts):
+                            return
+                        raise
+
+                for chunk in _tolerate_tail_parse_error(response):
                     usage.record_chunk(chunk)
                     chunks_count += 1
                     delta = _safe_get(chunk, "delta") or {}
@@ -1183,6 +1238,9 @@ class SkillAgentTool(Tool):
                         tool_calls_all.extend(tc)
                         if not saw_tool_calls:
                             saw_tool_calls = True
+                    _so = _safe_get(chunk, "structured_output")
+                    if isinstance(_so, dict):
+                        structured_obj = _so
                     if t:
                         text_parts.append(t)
                         combined_text_live = "".join(text_parts).strip()
@@ -1202,7 +1260,7 @@ class SkillAgentTool(Tool):
                     yield self.create_text_message("\n\n")
                 elif combined_text and not saw_tool_calls and should_emit_user_text(combined_text):
                     yield from emit_typing(combined_text)
-                return combined_text, tool_calls_all, nontext_content, chunks_count, streamed_any
+                return combined_text, tool_calls_all, nontext_content, chunks_count, streamed_any, structured_obj
 
             try:
                 return (yield from _invoke_once(prompt_messages))
@@ -1243,8 +1301,9 @@ class SkillAgentTool(Tool):
                             {"error": "stream_parse_failed", "exception": str(e2), "primary_exception": str(e)},
                             chunks_count,
                             streamed_any,
+                            None,
                         )
-                return "", [], {"error": "stream_parse_failed", "exception": str(e)}, chunks_count, streamed_any
+                return "", [], {"error": "stream_parse_failed", "exception": str(e)}, chunks_count, streamed_any, None
 
         loop_history_size = 30
         loop_warning_threshold = 10
@@ -1292,12 +1351,15 @@ class SkillAgentTool(Tool):
                             mode="text",
                         )
                 try:
-                    res_text, tool_calls, nontext, chunks, streamed_any = yield from invoke_llm_live(
+                    res_text, tool_calls, nontext, chunks, streamed_any, structured_round = yield from invoke_llm_live(
                         prompt_messages=messages,
                         tools=_build_prompt_message_tools(TOOL_SCHEMAS, PromptMessageTool),
                         fallback_prompt_messages=fallback_messages,
                         alt_prompt_messages=alt_messages,
+                        structured_schema=structured_schema,
                     )
+                    if isinstance(structured_round, dict):
+                        structured_output_obj = structured_round
                 except Exception as e:
                     msg = str(e)
                     if "NameResolutionError" in msg or "Failed to resolve" in msg:
@@ -2316,6 +2378,14 @@ class SkillAgentTool(Tool):
             yield self.create_variable_message("llm_usage", payload)
             if show_usage_text:
                 yield self.create_text_message(usage.format_text(payload))
+
+            if structured_output_enabled:
+                yield self.create_variable_message(
+                    "structured_output",
+                    structured_output_obj
+                    or _extract_json_object(final_text)
+                    or {"raw": final_text or ""},
+                )
 
             try:
                 if should_write_daily(

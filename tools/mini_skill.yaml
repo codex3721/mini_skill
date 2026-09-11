@@ -163,6 +163,49 @@ parameters:
       ja_JP: 有効にすると、トークン/費用の使用量サマリをチャットに表示します。
     llm_description: Toggle whether to output token/cost usage text to the frontend.
     form: form
+
+  - name: structured_output_enabled
+    type: boolean
+    required: false
+    default: false
+    label:
+      en_US: Structured
+      zh_Hans: 结构化输出
+      pt_BR: Estruturado
+      ja_JP: 構造化出力
+    human_description:
+      en_US: "Structured Outputs is a feature that ensures the model will always generate responses that adhere to your supplied JSON Schema"
+      zh_Hans: "结构化输出是一项功能，可确保模型始终生成符合您提供的 JSON 模式的响应"
+      pt_BR: "Saídas Estruturadas é um recurso que garante que o modelo sempre gerará respostas que seguem o seu Esquema JSON fornecido."
+      ja_JP: "構造化出力は、モデルが常に指定された JSON スキーマに準拠した応答を生成することを保証する機能です。"
+    llm_description: Toggle whether the LLM should output structured JSON conforming to a user-provided schema.
+    form: form
+
+  - name: structured_output_schema
+    type: string
+    required: false
+    label:
+      en_US: Configure
+      zh_Hans: 配置
+      pt_BR: Configurar
+      ja_JP: 設定
+    human_description:
+      en_US: "Structured output has not been configured yet"
+      zh_Hans: "结构化输出尚未配置"
+      pt_BR: "A saída estruturada ainda não foi configurada."
+      ja_JP: "構造化出力が未設定です"
+    llm_description: JSON schema for structured output. Only used when structured output is enabled.
+    form: form
+
+output_schema:
+  type: object
+  properties:
+    structured_output:
+      type: object
+      description: "Structured output (parsed JSON object) from the LLM, available when 'Structured' is enabled."
+    llm_usage:
+      type: object
+      description: "LLM token/cost usage statistics."
 extra:
   python:
     source: tools/mini_skill.py
