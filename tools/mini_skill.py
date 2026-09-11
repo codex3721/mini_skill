@@ -108,7 +108,6 @@ class SkillAgentTool(Tool):
 
         if not query or not isinstance(query, str):
             payload = usage.payload()
-            yield self.create_variable_message("llm_usage", payload)
             if show_usage_text:
                 yield self.create_text_message(usage.format_text(payload))
             yield self.create_text_message("❌缺少 query 参数\n")
@@ -660,13 +659,16 @@ class SkillAgentTool(Tool):
             approval_context=str(approval_context or ""),
         )
 
-        # 结构化输出走 Dify 原生通道（模型支持时用 response_format=json_schema，
-        # 不支持时由服务端自动降级为提示注入），插件只需传 dict 形式的 schema。
-        structured_schema: dict[str, Any] | None = None
-        if structured_output_enabled:
+        # 开启结构化输出时，把 JSON Schema 要求前置到 system prompt
+        if structured_output_enabled and structured_output_schema:
             try:
-                structured_schema = json.loads(structured_output_schema)
-                assert isinstance(structured_schema, dict)
+                _schema = json.loads(structured_output_schema)
+                assert isinstance(_schema, dict)
+                system_content = (
+                    "你必须只输出一个符合以下 JSON Schema 的 JSON 对象，"
+                    "不要使用 markdown 代码块或任何解释文字：\n"
+                    f"{json.dumps(_schema, ensure_ascii=False)}\n\n{system_content}"
+                )
             except Exception:
                 yield self.create_text_message(
                     "❌「结构化输出 schema」不是合法的 JSON 对象，请检查后重试。"
@@ -1122,7 +1124,6 @@ class SkillAgentTool(Tool):
             tools: list[Any] | None,
             fallback_prompt_messages: list[Any] | None = None,
             alt_prompt_messages: list[Any] | None = None,
-            structured_schema: dict[str, Any] | None = None,
         ) -> Generator[ToolInvokeMessage, None, tuple[str, list[Any], Any, int, bool, dict[str, Any] | None]]:
             nontext_content: list[dict[str, Any]] = []
             tool_calls_all: list[Any] = []
@@ -1166,23 +1167,12 @@ class SkillAgentTool(Tool):
                 structured_obj: dict[str, Any] | None = None
 
                 try:
-                    if structured_schema is not None:
-                        # Dify 原生结构化输出通道：模型支持则 response_format=json_schema 强制约束，
-                        # 不支持则服务端自动降级提示注入；服务端最终回填解析好的 structured_output。
-                        response = self.session.model.llm_structured_output.invoke(
-                            model_config=model,
-                            prompt_messages=pm,
-                            structured_output_schema=structured_schema,
-                            tools=tools,
-                            stream=True,
-                        )
-                    else:
-                        response = self.session.model.llm.invoke(
-                            model_config=model,
-                            prompt_messages=pm,
-                            tools=tools,
-                            stream=True,
-                        )
+                    response = self.session.model.llm.invoke(
+                        model_config=model,
+                        prompt_messages=pm,
+                        tools=tools,
+                        stream=True,
+                    )
                 except TypeError:
                     response = self.session.model.llm.invoke(
                         model_config=model,
@@ -1212,19 +1202,7 @@ class SkillAgentTool(Tool):
                         yield from emit_typing(combined_text)
                     return combined_text, tool_calls_all, nontext_content, chunks_count, streamed_any, structured_obj
 
-                def _tolerate_tail_parse_error(gen: Any) -> Any:
-                    # Dify 服务端在每轮流的末尾都会解析 structured_output；
-                    # Agent 中间的工具调用轮 content 为空，会抛
-                    # "Failed to parse structured output"。此时有效数据块已全部
-                    # 送达，忽略该尾部错误；最终轮由下方回退解析兜底。
-                    try:
-                        yield from gen
-                    except Exception as _e:
-                        if "structured output" in str(_e).lower() and (tool_calls_all or text_parts):
-                            return
-                        raise
-
-                for chunk in _tolerate_tail_parse_error(response):
+                for chunk in response:
                     usage.record_chunk(chunk)
                     chunks_count += 1
                     delta = _safe_get(chunk, "delta") or {}
@@ -1356,7 +1334,6 @@ class SkillAgentTool(Tool):
                         tools=_build_prompt_message_tools(TOOL_SCHEMAS, PromptMessageTool),
                         fallback_prompt_messages=fallback_messages,
                         alt_prompt_messages=alt_messages,
-                        structured_schema=structured_schema,
                     )
                     if isinstance(structured_round, dict):
                         structured_output_obj = structured_round
@@ -2375,7 +2352,6 @@ class SkillAgentTool(Tool):
                 )
 
             payload = usage.payload()
-            yield self.create_variable_message("llm_usage", payload)
             if show_usage_text:
                 yield self.create_text_message(usage.format_text(payload))
 
