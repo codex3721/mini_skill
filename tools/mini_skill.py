@@ -106,7 +106,6 @@ class SkillAgentTool(Tool):
 
         structured_output_enabled = bool(tool_parameters.get("structured_output_enabled"))
         structured_output_schema = (tool_parameters.get("structured_output_schema") or "").strip()
-        _dbg(f"structured_output_enabled={structured_output_enabled} schema_len={len(structured_output_schema)}")
         memory_turns = int(tool_parameters.get("memory_turns") or 12)
         system_prompt = tool_parameters.get("system_prompt") or "你是一个xxxx"
         skills_root = _detect_skills_root(tool_parameters.get("skills_root"))
@@ -1121,7 +1120,6 @@ class SkillAgentTool(Tool):
         empty_responses = 0
         saved_asset_fingerprints: set[str] = set()
         final_text_already_streamed = False
-        structured_output_obj: dict[str, Any] | None = None
         agent_tag_header = build_agent_tag_header(storage=storage, identity_key=identity_key, identity_md=identity_md)
 
         def invoke_llm_live(
@@ -1130,7 +1128,7 @@ class SkillAgentTool(Tool):
             tools: list[Any] | None,
             fallback_prompt_messages: list[Any] | None = None,
             alt_prompt_messages: list[Any] | None = None,
-        ) -> Generator[ToolInvokeMessage, None, tuple[str, list[Any], Any, int, bool, dict[str, Any] | None]]:
+        ) -> Generator[ToolInvokeMessage, None, tuple[str, list[Any], Any, int, bool]]:
             nontext_content: list[dict[str, Any]] = []
             tool_calls_all: list[Any] = []
             text_parts: list[str] = []
@@ -1160,7 +1158,7 @@ class SkillAgentTool(Tool):
                     return False
                 return True
 
-            def _invoke_once(pm: list[Any]) -> Generator[ToolInvokeMessage, None, tuple[str, list[Any], Any, int, bool, dict[str, Any] | None]]:
+            def _invoke_once(pm: list[Any]) -> Generator[ToolInvokeMessage, None, tuple[str, list[Any], Any, int, bool]]:
                 nonlocal nontext_content, tool_calls_all, text_parts, chunks_count, streamed_any, saw_tool_calls, emitted_prefix, emitted_len
                 nontext_content = []
                 tool_calls_all = []
@@ -1170,7 +1168,6 @@ class SkillAgentTool(Tool):
                 saw_tool_calls = False
                 emitted_prefix = False
                 emitted_len = 0
-                structured_obj: dict[str, Any] | None = None
 
                 try:
                     response = self.session.model.llm.invoke(
@@ -1198,15 +1195,12 @@ class SkillAgentTool(Tool):
                         tool_calls_all.extend(tool_calls)
                         if tool_calls:
                             saw_tool_calls = True
-                    _so = _safe_get(response, "structured_output")
-                    if isinstance(_so, dict):
-                        structured_obj = _so
                     if text:
                         text_parts.append(text)
                     combined_text = "".join(text_parts).strip()
                     if combined_text and not saw_tool_calls and should_emit_user_text(combined_text):
                         yield from emit_typing(combined_text)
-                    return combined_text, tool_calls_all, nontext_content, chunks_count, streamed_any, structured_obj
+                    return combined_text, tool_calls_all, nontext_content, chunks_count, streamed_any
 
                 for chunk in response:
                     usage.record_chunk(chunk)
@@ -1222,9 +1216,6 @@ class SkillAgentTool(Tool):
                         tool_calls_all.extend(tc)
                         if not saw_tool_calls:
                             saw_tool_calls = True
-                    _so = _safe_get(chunk, "structured_output")
-                    if isinstance(_so, dict):
-                        structured_obj = _so
                     if t:
                         text_parts.append(t)
                         combined_text_live = "".join(text_parts).strip()
@@ -1244,7 +1235,7 @@ class SkillAgentTool(Tool):
                     yield self.create_text_message("\n\n")
                 elif combined_text and not saw_tool_calls and should_emit_user_text(combined_text):
                     yield from emit_typing(combined_text)
-                return combined_text, tool_calls_all, nontext_content, chunks_count, streamed_any, structured_obj
+                return combined_text, tool_calls_all, nontext_content, chunks_count, streamed_any
 
             try:
                 return (yield from _invoke_once(prompt_messages))
@@ -1285,9 +1276,8 @@ class SkillAgentTool(Tool):
                             {"error": "stream_parse_failed", "exception": str(e2), "primary_exception": str(e)},
                             chunks_count,
                             streamed_any,
-                            None,
                         )
-                return "", [], {"error": "stream_parse_failed", "exception": str(e)}, chunks_count, streamed_any, None
+                return "", [], {"error": "stream_parse_failed", "exception": str(e)}, chunks_count, streamed_any
 
         loop_history_size = 30
         loop_warning_threshold = 10
@@ -1335,14 +1325,12 @@ class SkillAgentTool(Tool):
                             mode="text",
                         )
                 try:
-                    res_text, tool_calls, nontext, chunks, streamed_any, structured_round = yield from invoke_llm_live(
+                    res_text, tool_calls, nontext, chunks, streamed_any = yield from invoke_llm_live(
                         prompt_messages=messages,
                         tools=_build_prompt_message_tools(TOOL_SCHEMAS, PromptMessageTool),
                         fallback_prompt_messages=fallback_messages,
                         alt_prompt_messages=alt_messages,
                     )
-                    if isinstance(structured_round, dict):
-                        structured_output_obj = structured_round
                 except Exception as e:
                     msg = str(e)
                     if "NameResolutionError" in msg or "Failed to resolve" in msg:
@@ -2362,12 +2350,7 @@ class SkillAgentTool(Tool):
                 yield self.create_text_message(usage.format_text(payload))
 
             if structured_output_enabled:
-                _parsed = (
-                    structured_output_obj
-                    or _extract_json_object(final_text)
-                    or {"raw": final_text or ""}
-                )
-                yield self.create_json_message(_parsed)
+                yield self.create_json_message(_extract_json_object(final_text) or {"raw": final_text or ""})
 
             try:
                 if should_write_daily(
