@@ -71,13 +71,19 @@ from utils.mini_skill_memory import _append_daily_dialogue, _dt_beijing, _reset_
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
-    """从文本中提取 JSON 对象，兼容 markdown 代码块包裹；失败返回 None。"""
-    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (text or "").strip(), flags=re.IGNORECASE)
-    try:
-        obj = json.loads(cleaned)
-    except Exception:
+    """从文本中提取首个 JSON 对象，兼容 markdown 代码块与前后缀文本；失败返回 None。"""
+    if not text:
         return None
-    return obj if isinstance(obj, dict) else None
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.IGNORECASE)
+    decoder = json.JSONDecoder()
+    for m in re.finditer(r"\{", cleaned):
+        try:
+            obj, _ = decoder.raw_decode(cleaned[m.start():])
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            continue
+    return None
 
 
 class SkillAgentTool(Tool):
@@ -2356,11 +2362,13 @@ class SkillAgentTool(Tool):
                 yield self.create_text_message(usage.format_text(payload))
 
             if structured_output_enabled:
+                _extracted = _extract_json_object(final_text)
                 _parsed = (
                     structured_output_obj
-                    or _extract_json_object(final_text)
+                    or _extracted
                     or {"raw": final_text or ""}
                 )
+                _dbg(f"structured_output emit: obj={bool(structured_output_obj)} extracted={bool(_extracted)} fallback={not (structured_output_obj or _extracted)} final_text_len={len(final_text or '')} parsed_keys={list(_parsed.keys()) if isinstance(_parsed, dict) else 'n/a'}")
                 yield self.create_variable_message("structured_output", _parsed)
 
             try:
