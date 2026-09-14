@@ -2362,14 +2362,12 @@ class SkillAgentTool(Tool):
                 yield self.create_text_message(usage.format_text(payload))
 
             if structured_output_enabled:
-                _extracted = _extract_json_object(final_text)
                 _parsed = (
                     structured_output_obj
-                    or _extracted
+                    or _extract_json_object(final_text)
                     or {"raw": final_text or ""}
                 )
-                _dbg(f"structured_output emit: obj={bool(structured_output_obj)} extracted={bool(_extracted)} fallback={not (structured_output_obj or _extracted)} final_text_len={len(final_text or '')} parsed_keys={list(_parsed.keys()) if isinstance(_parsed, dict) else 'n/a'}")
-                yield self.create_variable_message("structured_output", _parsed)
+                yield self.create_json_message(_parsed)
 
             try:
                 if should_write_daily(
